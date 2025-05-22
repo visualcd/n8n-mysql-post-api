@@ -20,4 +20,11 @@ Acesta este un copilot vibecode pentru conectarea nodului HTTP Request din n8n c
   "query": "SHOW TABLES"
 }
 
+sau 
+{
+  "api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxcccccccccccccccccccccccccccccccccccccccccxxxxxxxxxxxxxxxxx",
+  "action": "query",
+  "query": "SELECT * FROM nume_tabel WHERE id = '{{ $execution.id }}'"
+}
+
 #### Scriptul este inca in testare si dezoltare dar funtional la testul nodului HTTP Request
