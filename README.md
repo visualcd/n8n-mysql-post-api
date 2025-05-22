@@ -19,3 +19,4 @@ Acesta este un copilot vibecode pentru conectarea nodului HTTP Request din n8n c
   "query": "SHOW TABLES"
 }
 
+Scriptul este inca in testare si dezoltare dar funtional la testul nodului HTTP Request
