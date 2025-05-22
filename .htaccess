@@ -1,0 +1,4 @@
+<Files "n8napiconfig.php">
+    Order allow,deny
+    Deny from all
+</Files>
