@@ -1,102 +1,121 @@
 <?php
-// Încarcă configurația din fișierul n8napiconfig.php
-$config = require_once __DIR__ . '/n8napiconfig.php';
+// Include config
+$config = include __DIR__ . '/n8napiconfig.php';
 
-$dbHost     = $config['DB_HOST'];
-$dbUser     = $config['DB_USER'];
-$dbPassword = $config['DB_PASSWORD'];
-$dbName     = $config['DB_NAME'];
-$apiKey     = $config['API_KEY'];
+// API key validation
+$headers = getallheaders();
+$apiKey = $headers['X-API-KEY'] ??
+    ($_SERVER['HTTP_X_API_KEY'] ??
+    ($_GET['api_key'] ?? ''));
 
-// Activează modul debug doar pentru dezvoltare/test
-define("DEBUG_MODE", true);
+// Dacă nu s-a găsit cheia, caută și în body (pentru POST/PUT/PATCH)
+if (!$apiKey && in_array($_SERVER['REQUEST_METHOD'], ['POST','PUT','PATCH'])) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (isset($input['api_key'])) {
+        $apiKey = $input['api_key'];
+    }
+}
 
-// Setăm header-ul ca fiind JSON
+// DEBUG: decomenteaza linia de mai jos pentru a vedea header-ele primite
+// file_put_contents('/tmp/n8n_api_debug.log', print_r($headers, true) . print_r($_SERVER, true));
+if ($apiKey !== $config['api_key']) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized', 'received_api_key' => $apiKey]);
+    exit;
+}
+
+// Connect to MySQL/MariaDB
+$mysqli = new mysqli(
+    $config['host'],
+    $config['username'],
+    $config['password'],
+    $config['database']
+);
+if ($mysqli->connect_error) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database connection failed']);
+    exit;
+}
+
 header('Content-Type: application/json');
 
-// Verificăm dacă metoda cererii este POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode([
-        'status'  => 'error',
-        'message' => 'Se acceptă doar cereri POST.'
-    ]);
-    exit();
-}
-
-// Citim conținutul cererii – se poate primi ca JSON sau ca URL-encoded POST
-$inputJSON = file_get_contents('php://input');
-$data = json_decode($inputJSON, true);
-if (!$data) {
-    $data = $_POST;
-}
-
-// Verificăm API key-ul transmis
-if (!isset($data['api_key']) || $data['api_key'] !== $apiKey) {
-    echo json_encode([
-        'status'  => 'error',
-        'message' => 'Acces neautorizat.'
-    ]);
-    exit();
-}
-
-// Stabilim acțiunea ce va fi efectuată
-$action = isset($data['action']) ? $data['action'] : '';
-$response = [];
-
-if ($action === 'query') {
-    if (!isset($data['query'])) {
-        echo json_encode([
-            'status'  => 'error',
-            'message' => 'Lipsește parametrul "query".'
-        ]);
-        exit();
-    }
-    $query = $data['query'];
-
-    // Conectăm la baza de date
-    $mysqli = new mysqli($dbHost, $dbUser, $dbPassword, $dbName);
-    if ($mysqli->connect_error) {
-        echo json_encode([
-            'status'  => 'error',
-            'message' => 'Conexiunea la baza de date a eșuat: ' . $mysqli->connect_error
-        ]);
-        exit();
-    }
-
-    // Executăm interogarea
-    $result = $mysqli->query($query);
-    if (!$result) {
-        $response['status']  = 'error';
-        $response['message'] = 'Eroare la interogare: ' . $mysqli->error;
-    } else {
-        // Dacă interogarea returnează un set de rezultate (ex: SELECT sau SHOW)
-        if ($result instanceof mysqli_result) {
-            $rows = [];
-            while ($row = $result->fetch_assoc()) {
-                $rows[] = $row;
-            }
-            $response['status'] = 'success';
-            $response['data']   = $rows;
-        } else {
-            // Pentru interogări care nu returnează un set de date (INSERT, UPDATE, etc.)
-            $response['status']  = 'success';
-            $response['message'] = 'Interogarea a fost executată cu succes.';
+switch ($_SERVER['REQUEST_METHOD']) {
+    case 'GET':
+        // Exemplu: preia date dintr-un tabel numit 'data'
+        $result = $mysqli->query('SELECT * FROM data');
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
         }
-    }
-    $mysqli->close();
-} else {
-    $response['status']  = 'error';
-    $response['message'] = 'Acțiune necunoscută.';
+        echo json_encode($rows);
+        break;
+    case 'POST':
+        $input = json_decode(file_get_contents('php://input'), true);
+        // Daca se trimite action=query si exista query in body sau in query string, executa query-ul primit
+        if ((isset($input['action']) && $input['action'] === 'query') && (isset($input['query']) || isset($_GET['query']))) {
+            $query = $input['query'] ?? $_GET['query'];
+            // Inlocuire variabile de forma {{ $json.cale }} sau {{ $('Nod').item.json.cale }} cu valorile din input
+            $query = preg_replace_callback('/\{\{\s*(\$json((?:\.[a-zA-Z0-9_]+)+)|\$\(\'([^)]+)\'\)\.item\.json((?:\.[a-zA-Z0-9_]+)+))\s*\}\}/', function($matches) use ($input) {
+                if (!empty($matches[2])) { // $json.cale
+                    $path = explode('.', trim($matches[2], '.'));
+                    $value = $input;
+                    foreach ($path as $key) {
+                        if (isset($value[$key])) {
+                            $value = $value[$key];
+                        } else {
+                            return '';
+                        }
+                    }
+                    return is_string($value) ? addslashes($value) : $value;
+                } elseif (!empty($matches[3]) && !empty($matches[4])) { // $('Nod').item.json.cale
+                    $node = $matches[3];
+                    $path = explode('.', trim($matches[4], '.'));
+                    $value = $input[$node]['item']['json'] ?? null;
+                    if ($value === null) return '';
+                    foreach ($path as $key) {
+                        if (isset($value[$key])) {
+                            $value = $value[$key];
+                        } else {
+                            return '';
+                        }
+                    }
+                    return is_string($value) ? addslashes($value) : $value;
+                }
+                return '';
+            }, $query);
+            $result = $mysqli->query($query);
+            if ($result === false) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Query error', 'details' => $mysqli->error]);
+                exit;
+            }
+            $rows = [];
+            if ($result instanceof mysqli_result) {
+                while ($row = $result->fetch_assoc()) {
+                    $rows[] = $row;
+                }
+            }
+            echo json_encode($rows);
+            break;
+        }
+        // Exemplu: inserează date în tabelul 'data'
+        if (!isset($input['valoare'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Lipseste campul valoare']);
+            exit;
+        }
+        $stmt = $mysqli->prepare('INSERT INTO data (valoare) VALUES (?)');
+        $stmt->bind_param('s', $input['valoare']);
+        if ($stmt->execute()) {
+            echo json_encode(['success' => true, 'id' => $stmt->insert_id]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['error' => 'Insert failed']);
+        }
+        break;
+    default:
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
 }
-
-// Partea de debug este inclusă doar dacă modul debug este activ
-// if (defined("DEBUG_MODE") && DEBUG_MODE === true) {
-//     // Aici poți adăuga orice informații de debug dorești
-//     $response['debug'] = [
-//         'received_post' => $data
-//     ];
-// }
-
-// Răspunsul final se trimite în format JSON
-echo json_encode($response);
+$mysqli->close();
 ?>
