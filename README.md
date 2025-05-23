@@ -27,4 +27,26 @@ sau
   "query": "SELECT * FROM nume_tabel WHERE id = '{{ $execution.id }}'"
 }
 
+sau 
+
+### V2
+
+Send Query Parameters = ON
+Specify Query Parameters = ON
+USE FILDS BELOW
+name = query
+value = SELECT * FROM DB_TABLE WHERE email = '{{ $('Switch').item.json.message.text }}';
+
+Send Body = ON
+
+Body Content Type = JSON
+
+Specify Body = JSON
+
+{
+    "api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "action": "query"
+}
+
+
 #### Scriptul este inca in testare si dezoltare dar funtional la testul nodului HTTP Request
