@@ -1,3 +1,19 @@
+# Security Best Practice: Restrict File System Permissions
+# In addition to the .htaccess rule below, it's crucial to set restrictive file system
+# permissions for the 'n8napiconfig.php' file. This provides an additional layer of security
+# in case .htaccess processing is disabled, misconfigured, or bypassed.
+#
+# Recommended permissions:
+#   chmod 400 n8napiconfig.php  (Owner read-only, no access for group or others)
+#   chmod 440 n8napiconfig.php  (Owner read-only, group read-only, no access for others)
+#
+# Ensure the file is owned by the appropriate user (e.g., your web server user or a dedicated
+# deployment user) and group. The choice between 400 and 440 depends on whether the web
+# server process itself needs to read the file directly or if it's included by PHP which
+# might run as a different user that is part of the file's group. For PHP scripts that include
+# the config, the user PHP runs as needs read access.
+#
+# This .htaccess rule denies direct HTTP access to the configuration file.
 <Files "n8napiconfig.php">
     Order allow,deny
     Deny from all
