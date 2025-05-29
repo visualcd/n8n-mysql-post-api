@@ -6,6 +6,6 @@ return [
     'DB_PASSWORD' => 'parola_baza_de_date',
     'DB_NAME'     => 'nume_baza_de_date',
     'API_KEY'     => 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    'port'        => '3306'
+    'PORT'        => '3306'
 ];
 ?>
